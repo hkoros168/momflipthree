@@ -90,6 +90,7 @@
       width:100%;
       height:100%;
       transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d; /* iPad Safari friendliness */
       will-change: transform;
       transition: transform 1100ms cubic-bezier(.18,.9,.16,1);
     }
@@ -459,6 +460,108 @@
     let roundTimeout = null;
     let memorizeToken = 0;
 
+    // --- iPad-safe speech helpers (no optional chaining, never throw) ---
+    function safeCancelSpeech(){
+      try{
+        if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function'){
+          window.speechSynthesis.cancel();
+        }
+      }catch(_){}
+    }
+
+    function pickCantoneseVoice(){
+      try{
+        if (!('speechSynthesis' in window) || !window.speechSynthesis) return null;
+        if (typeof window.speechSynthesis.getVoices !== 'function') return null;
+        const voices = window.speechSynthesis.getVoices() || [];
+        return voices.find(v => /zh-HK/i.test(v.lang))
+            || voices.find(v => /yue/i.test(v.lang))
+            || voices.find(v => /zh/i.test(v.lang))
+            || null;
+      }catch(_){
+        return null;
+      }
+    }
+
+    function speakAsync(text, opts={}){
+      // IMPORTANT: always resolve, even if iPad blocks speech.
+      try{
+        if (!speakToggle.checked) return Promise.resolve();
+        if (!('speechSynthesis' in window) || !window.speechSynthesis) return Promise.resolve();
+
+        const { rate = 0.78, pitch = 1.0, volume = 1.0, lang = 'zh-HK' } = opts;
+
+        return new Promise(resolve => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+
+          try{
+            safeCancelSpeech();
+            const u = new SpeechSynthesisUtterance(String(text));
+            u.rate = rate; u.pitch = pitch; u.volume = volume;
+            u.lang = lang;
+
+            const v = pickCantoneseVoice();
+            if (v) u.voice = v;
+
+            u.onend = finish;
+            u.onerror = finish;
+
+            // Watchdog: iPad Safari sometimes never calls onend/onerror
+            setTimeout(finish, 1500);
+
+            window.speechSynthesis.speak(u);
+          }catch(_){
+            finish();
+          }
+        });
+      }catch(_){
+        return Promise.resolve();
+      }
+    }
+
+    function speak(text, opts={}){
+      // fire-and-forget, but never throw
+      try{
+        if (!speakToggle.checked) return;
+        if (!('speechSynthesis' in window) || !window.speechSynthesis) return;
+
+        const { rate = 0.78, pitch = 1.0, volume = 1.0, lang = 'zh-HK' } = opts;
+
+        safeCancelSpeech();
+        const u = new SpeechSynthesisUtterance(String(text));
+        u.rate = rate; u.pitch = pitch; u.volume = volume;
+        u.lang = lang;
+
+        const v = pickCantoneseVoice();
+        if (v) u.voice = v;
+
+        window.speechSynthesis.speak(u);
+      }catch(_){}
+    }
+
+    // Prime speech once after first user gesture (improves iPad reliability)
+    let primedSpeech = false;
+    function primeSpeechOnce(){
+      if (primedSpeech) return;
+      primedSpeech = true;
+      try{
+        if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.getVoices === 'function'){
+          window.speechSynthesis.getVoices();
+        }
+      }catch(_){}
+      // A tiny silent-ish utterance; if blocked, nothing bad happens.
+      speak(' ', { rate: 1.0, volume: 0.0 });
+      safeCancelSpeech();
+    }
+    document.addEventListener('pointerdown', primeSpeechOnce, { once:true });
+    document.addEventListener('touchstart', primeSpeechOnce, { once:true });
+
+    // --- rest of your game code ---
     function shuffle(arr){
       const a = arr.slice();
       for (let i = a.length - 1; i > 0; i--){
@@ -469,54 +572,6 @@
     }
 
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-    function pickCantoneseVoice(){
-      if (!('speechSynthesis' in window)) return null;
-      const voices = window.speechSynthesis.getVoices?.() || [];
-      return voices.find(v => /zh-HK/i.test(v.lang))
-          || voices.find(v => /yue/i.test(v.lang))
-          || voices.find(v => /zh/i.test(v.lang))
-          || null;
-    }
-
-    function speakAsync(text, opts={}){
-      if (!speakToggle.checked) return Promise.resolve();
-      if (!('speechSynthesis' in window)) return Promise.resolve();
-
-      const { rate = 0.78, pitch = 1.0, volume = 1.0, lang = 'zh-HK' } = opts;
-
-      return new Promise(resolve => {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.rate = rate; u.pitch = pitch; u.volume = volume;
-        u.lang = lang;
-
-        const v = pickCantoneseVoice();
-        if (v) u.voice = v;
-
-        const done = () => resolve();
-        u.onend = done;
-        u.onerror = done;
-        window.speechSynthesis.speak(u);
-      });
-    }
-
-    function speak(text, opts={}){
-      if (!speakToggle.checked) return;
-      if (!('speechSynthesis' in window)) return;
-
-      const { rate = 0.78, pitch = 1.0, volume = 1.0, lang = 'zh-HK' } = opts;
-
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = rate; u.pitch = pitch; u.volume = volume;
-      u.lang = lang;
-
-      const v = pickCantoneseVoice();
-      if (v) u.voice = v;
-
-      window.speechSynthesis.speak(u);
-    }
 
     function announce(text){ srAnnounce.textContent = text; }
 
@@ -740,7 +795,7 @@
 
     async function startRound(){
       if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
-      window.speechSynthesis?.cancel?.();
+      safeCancelSpeech();            // <-- iPad-safe replacement
       memorizeToken++;
 
       measure();
@@ -758,7 +813,9 @@
       setFrontForMemorize();
 
       setInstruction('記住：數字喺邊張卡。', '');
-      await speakAsync('記住：數字喺邊張卡。', { rate: 0.78 });
+      try{
+        await speakAsync('記住：數字喺邊張卡。', { rate: 0.78 });
+      }catch(_){}
 
       await sleep(PAUSE_AFTER_PROMPT_MS);
 
@@ -787,7 +844,7 @@
       clearMemorizeHighlights();
 
       showGreatJobOverlay();
-      await sleep(2500);
+      await sleep(GREAT_JOB_MS);
       hideGreatJobOverlay();
 
       await shuffleAnimation();
@@ -835,8 +892,9 @@
     tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
-    if ('speechSynthesis' in window){
-      window.speechSynthesis.onvoiceschanged = () => {};
+    // Don't rely on onvoiceschanged; iPad Safari can be inconsistent. This is harmless:
+    if ('speechSynthesis' in window && window.speechSynthesis){
+      try{ window.speechSynthesis.onvoiceschanged = function(){}; }catch(_){}
     }
 
     setFrontNumbers();
