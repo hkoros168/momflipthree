@@ -6,19 +6,28 @@
   <title>記憶遊戲（1–2–3）</title>
   <style>
     :root{
-      --bg:#0b1220;
-      --card:#1a2540;
-      --card2:#223056;
-      --text:#f3f6ff;
-      --muted:#c9d2f0;
+      /* GREEN THEME */
+      --bg:#07140e;
+      --card:#0f2a1d;
+      --card2:#143728;
+
+      --text:#f2fff8;
+      --muted:#bfe7d3;
+
       --good:#2ecc71;
       --bad:#ff5a6a;
+
+      --accent:#7dffb3;          /* highlight glow */
+      --accentSoft:rgba(125,255,179,0.18);
+      --accentRing:rgba(170,255,215,0.45);
     }
+
     *{ box-sizing:border-box; }
+
     body{
       margin:0;
       font-family: system-ui, -apple-system, "PingFang HK", "Microsoft JhengHei", "Noto Sans CJK TC", Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      background: radial-gradient(1200px 800px at 20% 0%, #162044 0%, var(--bg) 55%);
+      background: radial-gradient(1200px 800px at 20% 0%, #0f2c1e 0%, var(--bg) 55%);
       color: var(--text);
       min-height:100vh;
       display:flex;
@@ -26,6 +35,7 @@
       justify-content:center;
       padding:16px;
     }
+
     .app{
       width:min(860px, 100%);
       background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
@@ -116,7 +126,7 @@
     }
     .back{
       transform: rotateY(180deg);
-      background: linear-gradient(180deg, #1a2440, #131b30);
+      background: linear-gradient(180deg, #0e241a, #071a12);
       color: rgba(255,255,255,0.92);
       font-size: clamp(64px, 10vw, 88px);
     }
@@ -238,7 +248,7 @@
       touch-action: manipulation;
     }
     .tapBtn:focus{
-      outline: 4px solid rgba(215,227,255,0.45);
+      outline: 4px solid var(--accentRing);
       outline-offset: 3px;
     }
     .tapBtn:disabled{ cursor:not-allowed; }
@@ -266,15 +276,15 @@
     .card.memorizeActive .overlay{
       opacity:1;
       background: radial-gradient(700px 240px at 50% 45%,
-        rgba(255,255,255,0.38),
-        rgba(122,167,255,0.16) 55%,
+        rgba(255,255,255,0.32),
+        var(--accentSoft) 55%,
         rgba(0,0,0,0.00) 78%);
       box-shadow:
-        inset 0 0 0 4px rgba(215,227,255,0.45),
-        0 0 30px rgba(122,167,255,0.30);
+        inset 0 0 0 4px var(--accentRing),
+        0 0 30px rgba(125,255,179,0.24);
     }
     .card.memorizeActive .front{
-      filter: drop-shadow(0 0 20px rgba(215,227,255,0.55));
+      filter: drop-shadow(0 0 20px rgba(125,255,179,0.42));
       transform: scale(1.05);
     }
 
@@ -287,7 +297,7 @@
       flex-direction:column;
       gap: 18px;
       background:
-        radial-gradient(900px 700px at 50% 30%, rgba(46,204,113,0.18), rgba(0,0,0,0.0) 60%),
+        radial-gradient(900px 700px at 50% 30%, rgba(46,204,113,0.16), rgba(0,0,0,0.0) 60%),
         rgba(0,0,0,0.72);
       z-index: 9999;
       padding: 26px;
@@ -420,25 +430,19 @@
     const tapBtns = Array.from(document.querySelectorAll('.tapBtn'));
     const numSpans = Array.from(document.querySelectorAll('.num'));
 
-    // 慢慢翻（洗牌前）
     const PRE_SHUFFLE_FLIP_MS = 3200;
-
-    // 讀完句子後，再等一陣先開始
     const PAUSE_AFTER_PROMPT_MS = 2000;
 
-    // 記住階段：逐個高亮 1,2,3
     const HIGHLIGHT_EACH_MS = 3000;
     const GAP_MS = 150;
 
-    // 物理翻卡時間
-    const ASK_FLIP_MS = 2200;      // 數字 -> ？
-    const REVEAL_FLIP_MS = 1200;   // ？ -> 數字（答啱先翻返）
+    const ASK_FLIP_MS = 2200;
+    const REVEAL_FLIP_MS = 1200;
 
     const NEXT_PROMPT_DELAY_MS = 900;
     const FEEDBACK_FLASH_MS = 800;
     const GREAT_JOB_MS = 2500;
 
-    // 轉圈洗牌
     const CIRCLE_TOTAL_MS = 2400;
     const CIRCLE_LOOPS = 2.0;
 
@@ -466,7 +470,15 @@
 
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-    // 說話：等佢講完先 resolve
+    function pickCantoneseVoice(){
+      if (!('speechSynthesis' in window)) return null;
+      const voices = window.speechSynthesis.getVoices?.() || [];
+      return voices.find(v => /zh-HK/i.test(v.lang))
+          || voices.find(v => /yue/i.test(v.lang))
+          || voices.find(v => /zh/i.test(v.lang))
+          || null;
+    }
+
     function speakAsync(text, opts={}){
       if (!speakToggle.checked) return Promise.resolve();
       if (!('speechSynthesis' in window)) return Promise.resolve();
@@ -479,12 +491,8 @@
         u.rate = rate; u.pitch = pitch; u.volume = volume;
         u.lang = lang;
 
-        // 盡量揀廣東話聲（有就用）
-        const voices = window.speechSynthesis.getVoices?.() || [];
-        const preferred = voices.find(v => /zh-HK/i.test(v.lang))
-                        || voices.find(v => /yue/i.test(v.lang))
-                        || voices.find(v => /zh/i.test(v.lang));
-        if (preferred) u.voice = preferred;
+        const v = pickCantoneseVoice();
+        if (v) u.voice = v;
 
         const done = () => resolve();
         u.onend = done;
@@ -493,7 +501,6 @@
       });
     }
 
-    // 說話：唔等
     function speak(text, opts={}){
       if (!speakToggle.checked) return;
       if (!('speechSynthesis' in window)) return;
@@ -505,11 +512,8 @@
       u.rate = rate; u.pitch = pitch; u.volume = volume;
       u.lang = lang;
 
-      const voices = window.speechSynthesis.getVoices?.() || [];
-      const preferred = voices.find(v => /zh-HK/i.test(v.lang))
-                      || voices.find(v => /yue/i.test(v.lang))
-                      || voices.find(v => /zh/i.test(v.lang));
-      if (preferred) u.voice = preferred;
+      const v = pickCantoneseVoice();
+      if (v) u.voice = v;
 
       window.speechSynthesis.speak(u);
     }
@@ -582,7 +586,6 @@
       bigOverlay.classList.remove('show');
     }
 
-    // 記住階段：逐個講 1,2,3，同時閃框
     async function runMemorizeSequenceForGrandma(){
       const myToken = ++memorizeToken;
       clearMemorizeHighlights();
@@ -711,7 +714,7 @@
       cards.forEach((c) => {
         c.style.setProperty('--askFlipMs', `${ASK_FLIP_MS}ms`);
         c.classList.add('askFlipping', 'flipping');
-        c.classList.add('isFlipped'); // 最後要係背面（？）
+        c.classList.add('isFlipped');
       });
 
       await sleep(ASK_FLIP_MS + 80);
@@ -726,7 +729,7 @@
       c.style.setProperty('--revealFlipMs', `${REVEAL_FLIP_MS}ms`);
       c.classList.add('revealFlipping', 'flipping');
 
-      c.classList.remove('isFlipped'); // 最後要係正面（數字）
+      c.classList.remove('isFlipped');
 
       await sleep(REVEAL_FLIP_MS + 60);
 
@@ -784,7 +787,7 @@
       clearMemorizeHighlights();
 
       showGreatJobOverlay();
-      await sleep(GREAT_JOB_MS);
+      await sleep(2500);
       hideGreatJobOverlay();
 
       await shuffleAnimation();
@@ -807,7 +810,6 @@
 
         revealCardPhysical(index);
 
-        // 簡單講法：啱 / 唔啱
         speak('啱呀。', { rate: 0.82 });
 
         setTimeout(() => {
@@ -833,7 +835,6 @@
     tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
-    // 有啲瀏覽器要等 voices ready（唔等都得，但呢度補一補）
     if ('speechSynthesis' in window){
       window.speechSynthesis.onvoiceschanged = () => {};
     }
