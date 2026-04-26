@@ -20,6 +20,12 @@
       --accent:#22c55e;          /* highlight glow */
       --accentSoft:rgba(34,197,94,0.16);
       --accentRing:rgba(34,197,94,0.45);
+
+      /* NEW: dark green emphasize color for memorize highlight */
+      --emphDark1:#0f3d2a;
+      --emphDark2:#0b2f21;
+      --emphText:#eafff3;
+      --emphRing:rgba(15,61,42,0.55);
     }
 
     *{ box-sizing:border-box; }
@@ -28,10 +34,10 @@
     html, body{
       height: 100%;
       overflow: hidden;
-      position: fixed;   /* strong iOS/iPadOS scroll lock */
+      position: fixed;
       width: 100%;
       overscroll-behavior: none;
-      touch-action: none; /* stop pan/scroll gestures */
+      touch-action: none;
     }
     body{
       margin:0;
@@ -40,21 +46,16 @@
       color: var(--text);
       min-height:100vh;
 
-      /* Move the game a bit higher (more centered on iPad) */
       display:flex;
       align-items:center;
       justify-content:center;
       padding:16px;
 
-      /* Lift slightly upwards relative to true center */
       padding-top: max(16px, env(safe-area-inset-top));
       padding-bottom: max(16px, env(safe-area-inset-bottom));
     }
 
-    /* Re-allow interactions inside the app */
-    .app, .app *{
-      touch-action: manipulation;
-    }
+    .app, .app *{ touch-action: manipulation; }
 
     .app{
       width:min(860px, 100%);
@@ -64,11 +65,8 @@
       padding:18px;
       box-shadow: 0 20px 60px rgba(11,42,26,0.18);
       position: relative;
-
-      /* lift the whole panel slightly higher */
       transform: translateY(-4vh);
     }
-
     @media (max-height: 700px){
       .app{ transform: translateY(-2.5vh); }
     }
@@ -117,7 +115,7 @@
       width:100%;
       height:100%;
       transform-style: preserve-3d;
-      -webkit-transform-style: preserve-3d; /* iPad Safari */
+      -webkit-transform-style: preserve-3d;
       will-change: transform;
       transition: transform 1100ms cubic-bezier(.18,.9,.16,1);
     }
@@ -134,7 +132,6 @@
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
 
-      /* iPad Safari: prevent face bleed-through by separating planes + forcing compositing */
       transform: translateZ(0.1px);
       -webkit-transform: translateZ(0.1px);
 
@@ -157,25 +154,19 @@
       background: linear-gradient(180deg, var(--card), var(--card2));
       color: var(--text);
       font-size: clamp(72px, 10vw, 96px);
+      transition: filter 220ms ease, transform 220ms ease, background 220ms ease, color 220ms ease;
     }
     .back{
       transform: rotateY(180deg) translateZ(0.2px);
       -webkit-transform: rotateY(180deg) translateZ(0.2px);
-
       background: linear-gradient(180deg, #e9fff2, #c9f7de);
       color: rgba(11,42,26,0.92);
       font-size: clamp(64px, 10vw, 88px);
     }
 
-    .card, .flip{
-      -webkit-transform: translateZ(0);
-    }
+    .card, .flip{ -webkit-transform: translateZ(0); }
 
-    .num, .qmark{
-      position:relative;
-      z-index:2;
-      line-height:1;
-    }
+    .num, .qmark{ position:relative; z-index:2; line-height:1; }
 
     .shine, .shade{
       position:absolute;
@@ -275,10 +266,6 @@
       }
     }
 
-    /* Make touch/click more forgiving:
-       - ensure full overlay always gets the event
-       - remove 300ms delays (old)
-       - prevent accidental selection / double-tap zoom behaviors */
     .tapBtn{
       position:absolute;
       inset:0;
@@ -294,12 +281,9 @@
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
-      touch-action: manipulation; /* allow taps, stop scroll/zoom gestures */
+      touch-action: manipulation;
     }
-    .tapBtn:active{
-      /* tiny feedback so grandma knows it registered */
-      transform: scale(0.995);
-    }
+    .tapBtn:active{ transform: scale(0.995); }
     .tapBtn:focus{
       outline: 4px solid var(--accentRing);
       outline-offset: 3px;
@@ -313,7 +297,7 @@
       pointer-events:none;
       z-index:4;
       opacity:0;
-      transition: opacity 220ms ease, box-shadow 220ms ease;
+      transition: opacity 220ms ease, box-shadow 220ms ease, background 220ms ease;
     }
     .card.correct .overlay{
       opacity:1;
@@ -326,20 +310,22 @@
       box-shadow: inset 0 0 0 3px rgba(225,29,72,0.22);
     }
 
+    /* UPDATED: When highlighting during memorize, make it DARK GREEN */
     .card.memorizeActive .overlay{
       opacity:1;
-      background: radial-gradient(700px 240px at 50% 45%,
-        rgba(255,255,255,0.45),
-        var(--accentSoft) 55%,
-        rgba(0,0,0,0.00) 78%);
+      background: linear-gradient(180deg, rgba(15,61,42,0.60), rgba(11,47,33,0.38));
       box-shadow:
-        inset 0 0 0 4px var(--accentRing),
-        0 0 30px rgba(34,197,94,0.18);
+        inset 0 0 0 4px var(--emphRing),
+        0 0 34px rgba(15,61,42,0.22);
     }
     .card.memorizeActive .front{
-      filter: drop-shadow(0 0 18px rgba(34,197,94,0.32));
-      transform: scale(1.05);
+      background: linear-gradient(180deg, var(--emphDark1), var(--emphDark2));
+      color: var(--emphText);
+      filter: drop-shadow(0 0 20px rgba(15,61,42,0.40));
+      transform: scale(1.06);
     }
+    .card.memorizeActive .shine{ opacity: 0.12; }
+    .card.memorizeActive .shade{ opacity: 0.35; }
 
     .bigOverlay{
       position: fixed;
@@ -472,7 +458,6 @@
   </div>
 
   <script>
-    // Extra scroll lock for iPad Safari (prevents scroll even if something tries to)
     document.addEventListener('touchmove', function(e){
       e.preventDefault();
     }, { passive: false });
@@ -530,7 +515,6 @@
 
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-    // --- iPad-safe speech helpers (no optional chaining, never throw, always resolve) ---
     function safeCancelSpeech(){
       try{
         if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function'){
@@ -580,7 +564,7 @@
             u.onend = finish;
             u.onerror = finish;
 
-            setTimeout(finish, 1500); // watchdog for iPad Safari
+            setTimeout(finish, 1500);
             window.speechSynthesis.speak(u);
           }catch(_){
             finish();
@@ -610,7 +594,6 @@
       }catch(_){}
     }
 
-    // Prime speech after first user gesture (improves iPad behavior; safe if blocked)
     let primedSpeech = false;
     function primeSpeechOnce(){
       if (primedSpeech) return;
@@ -698,6 +681,7 @@
       const myToken = ++memorizeToken;
       clearMemorizeHighlights();
 
+      // Highlight in order 1, then 2, then 3 (as requested)
       for (const value of [1,2,3]){
         if (memorizeToken !== myToken) return;
         if (state !== 'memorize') return;
@@ -846,6 +830,13 @@
       if (state === 'ask') setAllDisabled(false);
     }
 
+    // Ensures it asks 1, then 2, then 3 (and resets each round)
+    function askFor(n){
+      target = n;
+      setInstruction(`撳 ${n}。`, '');
+      speak(`撳 ${n}。`, { rate: 0.82 });
+    }
+
     async function startRound(){
       if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
       safeCancelSpeech();
@@ -884,8 +875,7 @@
 
         await flipAllToQuestionMarksSlow();
 
-        setInstruction('撳 1。', '');
-        speak('撳 1。', { rate: 0.82 });
+        askFor(1);
         setAllDisabled(false);
       }, highlightSegmentMs);
     }
@@ -924,13 +914,9 @@
 
         setTimeout(() => {
           if (target === 1){
-            target = 2;
-            setInstruction('撳 2。', '');
-            speak('撳 2。', { rate: 0.82 });
+            askFor(2);
           } else if (target === 2){
-            target = 3;
-            setInstruction('撳 3。', '');
-            speak('撳 3。', { rate: 0.82 });
+            askFor(3);
           } else {
             finishRoundAndRestart();
           }
@@ -942,10 +928,6 @@
       }
     }
 
-    /* More sensitive touch:
-       - use Pointer Events (works for both touch + mouse)
-       - also add touchstart fallback
-       - use event delegation on .board so taps always register even if Safari misses "click" */
     function indexFromEventTarget(targetEl){
       const btn = targetEl && targetEl.closest ? targetEl.closest('.tapBtn') : null;
       if (!btn) return -1;
@@ -956,20 +938,17 @@
     }
 
     board.addEventListener('pointerdown', (e) => {
-      // Prevent double-tap zoom / selection oddities
       e.preventDefault();
       const idx = indexFromEventTarget(e.target);
       if (idx >= 0) handlePick(idx);
     }, { passive: false });
 
     board.addEventListener('touchstart', (e) => {
-      // Fallback for older iPad Safari edge cases
       e.preventDefault();
       const idx = indexFromEventTarget(e.target);
       if (idx >= 0) handlePick(idx);
     }, { passive: false });
 
-    // Keep the original click too (harmless, helps desktop)
     tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
 
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
