@@ -90,7 +90,7 @@
       width:100%;
       height:100%;
       transform-style: preserve-3d;
-      -webkit-transform-style: preserve-3d; /* iPad Safari friendliness */
+      -webkit-transform-style: preserve-3d; /* iPad Safari */
       will-change: transform;
       transition: transform 1100ms cubic-bezier(.18,.9,.16,1);
     }
@@ -103,8 +103,14 @@
       align-items:center;
       justify-content:center;
       border-radius:20px;
+
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
+
+      /* iPad Safari: prevent face bleed-through by separating planes + forcing compositing */
+      transform: translateZ(0.1px);
+      -webkit-transform: translateZ(0.1px);
+
       font-weight:1000;
       user-select:none;
       overflow:hidden;
@@ -126,10 +132,18 @@
       font-size: clamp(72px, 10vw, 96px);
     }
     .back{
-      transform: rotateY(180deg);
+      /* keep the rotate, but add the Z nudge (iPad Safari fix) */
+      transform: rotateY(180deg) translateZ(0.2px);
+      -webkit-transform: rotateY(180deg) translateZ(0.2px);
+
       background: linear-gradient(180deg, #0e241a, #071a12);
       color: rgba(255,255,255,0.92);
       font-size: clamp(64px, 10vw, 88px);
+    }
+
+    /* Optional: force GPU layer on containers (helps iPad Safari) */
+    .card, .flip{
+      -webkit-transform: translateZ(0);
     }
 
     .num, .qmark{
@@ -460,7 +474,18 @@
     let roundTimeout = null;
     let memorizeToken = 0;
 
-    // --- iPad-safe speech helpers (no optional chaining, never throw) ---
+    function shuffle(arr){
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+    // --- iPad-safe speech helpers (no optional chaining, never throw, always resolve) ---
     function safeCancelSpeech(){
       try{
         if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function'){
@@ -484,7 +509,6 @@
     }
 
     function speakAsync(text, opts={}){
-      // IMPORTANT: always resolve, even if iPad blocks speech.
       try{
         if (!speakToggle.checked) return Promise.resolve();
         if (!('speechSynthesis' in window) || !window.speechSynthesis) return Promise.resolve();
@@ -511,9 +535,7 @@
             u.onend = finish;
             u.onerror = finish;
 
-            // Watchdog: iPad Safari sometimes never calls onend/onerror
-            setTimeout(finish, 1500);
-
+            setTimeout(finish, 1500); // watchdog for iPad Safari
             window.speechSynthesis.speak(u);
           }catch(_){
             finish();
@@ -525,7 +547,6 @@
     }
 
     function speak(text, opts={}){
-      // fire-and-forget, but never throw
       try{
         if (!speakToggle.checked) return;
         if (!('speechSynthesis' in window) || !window.speechSynthesis) return;
@@ -544,7 +565,7 @@
       }catch(_){}
     }
 
-    // Prime speech once after first user gesture (improves iPad reliability)
+    // Prime speech after first user gesture (improves iPad behavior; safe if blocked)
     let primedSpeech = false;
     function primeSpeechOnce(){
       if (primedSpeech) return;
@@ -554,24 +575,11 @@
           window.speechSynthesis.getVoices();
         }
       }catch(_){}
-      // A tiny silent-ish utterance; if blocked, nothing bad happens.
       speak(' ', { rate: 1.0, volume: 0.0 });
       safeCancelSpeech();
     }
     document.addEventListener('pointerdown', primeSpeechOnce, { once:true });
     document.addEventListener('touchstart', primeSpeechOnce, { once:true });
-
-    // --- rest of your game code ---
-    function shuffle(arr){
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--){
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
-
-    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
     function announce(text){ srAnnounce.textContent = text; }
 
@@ -795,7 +803,7 @@
 
     async function startRound(){
       if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
-      safeCancelSpeech();            // <-- iPad-safe replacement
+      safeCancelSpeech();
       memorizeToken++;
 
       measure();
@@ -892,7 +900,6 @@
     tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
-    // Don't rely on onvoiceschanged; iPad Safari can be inconsistent. This is harmless:
     if ('speechSynthesis' in window && window.speechSynthesis){
       try{ window.speechSynthesis.onvoiceschanged = function(){}; }catch(_){}
     }
