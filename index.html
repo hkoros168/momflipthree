@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>記憶遊戲（1–2–3）</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#1a2540;
+      --card2:#223056;
+      --text:#f3f6ff;
+      --muted:#c9d2f0;
+      --good:#2ecc71;
+      --bad:#ff5a6a;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, "PingFang HK", "Microsoft JhengHei", "Noto Sans CJK TC", Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 0%, #162044 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+    }
+    .app{
+      width:min(860px, 100%);
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:20px;
+      padding:18px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      position: relative;
+    }
+
+    .instruction{
+      margin:0;
+      font-size: clamp(30px, 4.6vw, 48px);
+      font-weight: 1000;
+      line-height:1.12;
+      min-height: 1.15em;
+    }
+    .subinstruction{
+      margin:10px 0 0 0;
+      color: var(--muted);
+      font-size: clamp(18px, 2.4vw, 24px);
+      line-height:1.25;
+      font-weight: 850;
+      min-height: 1.2em;
+    }
+
+    .board{
+      position:relative;
+      margin-top:14px;
+      height: 210px;
+      overflow: visible;
+    }
+
+    .card{
+      position:absolute;
+      top:0;
+      width: calc((100% - 28px) / 3);
+      height: 210px;
+      border-radius:20px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10));
+      overflow:hidden;
+
+      perspective: 1800px;
+      will-change: transform, filter;
+      transition: transform 850ms cubic-bezier(.18,.9,.16,1), filter 850ms cubic-bezier(.18,.9,.16,1);
+      filter: drop-shadow(0 14px 26px rgba(0,0,0,0.32));
+    }
+
+    .flip{
+      position:relative;
+      width:100%;
+      height:100%;
+      transform-style: preserve-3d;
+      will-change: transform;
+      transition: transform 1100ms cubic-bezier(.18,.9,.16,1);
+    }
+    .isFlipped .flip{ transform: rotateY(180deg); }
+
+    .face{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:20px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      font-weight:1000;
+      user-select:none;
+      overflow:hidden;
+    }
+    .face::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      border-radius:20px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.12),
+        inset 0 -10px 30px rgba(0,0,0,0.25);
+      pointer-events:none;
+    }
+
+    .front{
+      background: linear-gradient(180deg, var(--card), var(--card2));
+      color: var(--text);
+      font-size: clamp(72px, 10vw, 96px);
+    }
+    .back{
+      transform: rotateY(180deg);
+      background: linear-gradient(180deg, #1a2440, #131b30);
+      color: rgba(255,255,255,0.92);
+      font-size: clamp(64px, 10vw, 88px);
+    }
+
+    .num, .qmark{
+      position:relative;
+      z-index:2;
+      line-height:1;
+    }
+
+    .shine, .shade{
+      position:absolute;
+      inset:0;
+      border-radius:20px;
+      pointer-events:none;
+      opacity:0;
+      transition: opacity 240ms ease;
+      z-index:1;
+    }
+    .shine{
+      background: radial-gradient(720px 240px at 18% 18%,
+        rgba(255,255,255,0.30),
+        rgba(255,255,255,0.10) 35%,
+        rgba(255,255,255,0.0) 70%);
+      mix-blend-mode: screen;
+    }
+    .shade{
+      background: radial-gradient(980px 320px at 50% 65%,
+        rgba(0,0,0,0.0),
+        rgba(0,0,0,0.38) 72%);
+      mix-blend-mode: multiply;
+    }
+
+    .card.flipping .shine{ opacity: 1; }
+    .card.flipping .shade{ opacity: 1; }
+
+    .card.askFlipping{
+      animation: liftDuringFlip var(--askFlipMs, 2200ms) cubic-bezier(.16,.9,.12,1) both;
+    }
+    .card.askFlipping .flip{
+      transition: none !important;
+      animation: flipToBack var(--askFlipMs, 2200ms) both;
+    }
+
+    @keyframes flipToBack{
+      0%   { transform: rotateY(0deg); }
+      18%  { transform: rotateY(18deg); }
+      45%  { transform: rotateY(92deg); }
+      70%  { transform: rotateY(165deg); }
+      86%  { transform: rotateY(186deg); }
+      100% { transform: rotateY(180deg); }
+    }
+
+    @keyframes liftDuringFlip{
+      0%{
+        transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0) rotateZ(0deg) scale(1);
+        filter: drop-shadow(0 14px 26px rgba(0,0,0,0.32));
+      }
+      40%{
+        transform: translate3d(var(--tx, 0px), calc(var(--ty, 0px) - 6px), 0) rotateZ(-1.2deg) scale(1.02);
+        filter: drop-shadow(0 26px 46px rgba(0,0,0,0.45));
+      }
+      70%{
+        transform: translate3d(var(--tx, 0px), calc(var(--ty, 0px) - 4px), 0) rotateZ(1.0deg) scale(1.02);
+        filter: drop-shadow(0 24px 42px rgba(0,0,0,0.42));
+      }
+      100%{
+        transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0) rotateZ(0deg) scale(1);
+        filter: drop-shadow(0 14px 26px rgba(0,0,0,0.32));
+      }
+    }
+
+    .card.revealFlipping{
+      animation: liftDuringReveal var(--revealFlipMs, 1200ms) cubic-bezier(.16,.9,.12,1) both;
+    }
+    .card.revealFlipping .flip{
+      transition: none !important;
+      animation: flipToFront var(--revealFlipMs, 1200ms) both;
+    }
+
+    @keyframes flipToFront{
+      0%   { transform: rotateY(180deg); }
+      18%  { transform: rotateY(162deg); }
+      45%  { transform: rotateY(88deg); }
+      72%  { transform: rotateY(14deg); }
+      86%  { transform: rotateY(-7deg); }
+      100% { transform: rotateY(0deg); }
+    }
+
+    @keyframes liftDuringReveal{
+      0%{
+        transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0) rotateZ(0deg) scale(1);
+        filter: drop-shadow(0 14px 26px rgba(0,0,0,0.32));
+      }
+      40%{
+        transform: translate3d(var(--tx, 0px), calc(var(--ty, 0px) - 6px), 0) rotateZ(1.1deg) scale(1.02);
+        filter: drop-shadow(0 26px 46px rgba(0,0,0,0.45));
+      }
+      70%{
+        transform: translate3d(var(--tx, 0px), calc(var(--ty, 0px) - 4px), 0) rotateZ(-0.9deg) scale(1.02);
+        filter: drop-shadow(0 24px 42px rgba(0,0,0,0.42));
+      }
+      100%{
+        transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0) rotateZ(0deg) scale(1);
+        filter: drop-shadow(0 14px 26px rgba(0,0,0,0.32));
+      }
+    }
+
+    .tapBtn{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      border:0;
+      background: transparent;
+      cursor:pointer;
+      border-radius:20px;
+      z-index:5;
+      touch-action: manipulation;
+    }
+    .tapBtn:focus{
+      outline: 4px solid rgba(215,227,255,0.45);
+      outline-offset: 3px;
+    }
+    .tapBtn:disabled{ cursor:not-allowed; }
+
+    .overlay{
+      position:absolute;
+      inset:0;
+      border-radius:20px;
+      pointer-events:none;
+      z-index:4;
+      opacity:0;
+      transition: opacity 220ms ease, box-shadow 220ms ease;
+    }
+    .card.correct .overlay{
+      opacity:1;
+      background: linear-gradient(180deg, rgba(46,204,113,0.34), rgba(46,204,113,0.12));
+      box-shadow: inset 0 0 0 3px rgba(46,204,113,0.35);
+    }
+    .card.wrong .overlay{
+      opacity:1;
+      background: linear-gradient(180deg, rgba(255,90,106,0.28), rgba(255,90,106,0.12));
+      box-shadow: inset 0 0 0 3px rgba(255,90,106,0.28);
+    }
+
+    .card.memorizeActive .overlay{
+      opacity:1;
+      background: radial-gradient(700px 240px at 50% 45%,
+        rgba(255,255,255,0.38),
+        rgba(122,167,255,0.16) 55%,
+        rgba(0,0,0,0.00) 78%);
+      box-shadow:
+        inset 0 0 0 4px rgba(215,227,255,0.45),
+        0 0 30px rgba(122,167,255,0.30);
+    }
+    .card.memorizeActive .front{
+      filter: drop-shadow(0 0 20px rgba(215,227,255,0.55));
+      transform: scale(1.05);
+    }
+
+    .bigOverlay{
+      position: fixed;
+      inset: 0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+      gap: 18px;
+      background:
+        radial-gradient(900px 700px at 50% 30%, rgba(46,204,113,0.18), rgba(0,0,0,0.0) 60%),
+        rgba(0,0,0,0.72);
+      z-index: 9999;
+      padding: 26px;
+      text-align:center;
+    }
+    .bigOverlay.show{ display:flex; }
+    .bigOverlay h2{
+      margin:0;
+      font-size: clamp(40px, 7vw, 76px);
+      font-weight: 1000;
+      line-height: 1.05;
+    }
+
+    .sr{
+      position:absolute;
+      left:-10000px;
+      top:auto;
+      width:1px;
+      height:1px;
+      overflow:hidden;
+    }
+
+    .speakCorner{
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 10000;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(0,0,0,0.38);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      color: var(--text);
+      font-weight: 950;
+      font-size: 15px;
+      user-select:none;
+    }
+    .speakCorner input{ transform: scale(1.35); }
+
+    @media (max-width: 520px){
+      .board{ height: 170px; }
+      .card{ height: 170px; }
+      .speakCorner{ right: 10px; bottom: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce){
+      .card, .flip, .overlay{ transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="記憶遊戲 1 2 3">
+    <div>
+      <p class="instruction" id="instructionTop">記住：數字喺邊張卡。</p>
+      <p class="subinstruction" id="instructionSub"></p>
+      <div class="sr" id="srAnnounce" aria-live="assertive"></div>
+    </div>
+
+    <div class="board" aria-label="卡">
+      <div class="card" data-card="0">
+        <div class="overlay"></div>
+        <button class="tapBtn" type="button" aria-label="第 1 張卡"></button>
+        <div class="flip">
+          <div class="face front">
+            <div class="shine"></div><div class="shade"></div>
+            <span class="num">1</span>
+          </div>
+          <div class="face back">
+            <div class="shine"></div><div class="shade"></div>
+            <span class="qmark">？</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" data-card="1">
+        <div class="overlay"></div>
+        <button class="tapBtn" type="button" aria-label="第 2 張卡"></button>
+        <div class="flip">
+          <div class="face front">
+            <div class="shine"></div><div class="shade"></div>
+            <span class="num">2</span>
+          </div>
+          <div class="face back">
+            <div class="shine"></div><div class="shade"></div>
+            <span class="qmark">？</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" data-card="2">
+        <div class="overlay"></div>
+        <button class="tapBtn" type="button" aria-label="第 3 張卡"></button>
+        <div class="flip">
+          <div class="face front">
+            <div class="shine"></div><div class="shade"></div>
+            <span class="num">3</span>
+          </div>
+          <div class="face back">
+            <div class="shine"></div><div class="shade"></div>
+            <span class="qmark">？</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <label class="speakCorner" title="會出聲（如果支援）。">
+    <input id="speakToggle" type="checkbox" checked />
+    <span>出聲</span>
+  </label>
+
+  <div class="bigOverlay" id="bigOverlay" aria-live="assertive">
+    <h2 id="bigOverlayTitle">叻叻！</h2>
+  </div>
+
+  <script>
+    const speakToggle = document.getElementById('speakToggle');
+    const instructionTop = document.getElementById('instructionTop');
+    const instructionSub = document.getElementById('instructionSub');
+    const srAnnounce = document.getElementById('srAnnounce');
+
+    const bigOverlay = document.getElementById('bigOverlay');
+    const bigOverlayTitle = document.getElementById('bigOverlayTitle');
+
+    const board = document.querySelector('.board');
+    const cards = Array.from(document.querySelectorAll('.card'));
+    const tapBtns = Array.from(document.querySelectorAll('.tapBtn'));
+    const numSpans = Array.from(document.querySelectorAll('.num'));
+
+    // 慢慢翻（洗牌前）
+    const PRE_SHUFFLE_FLIP_MS = 3200;
+
+    // 讀完句子後，再等一陣先開始
+    const PAUSE_AFTER_PROMPT_MS = 2000;
+
+    // 記住階段：逐個高亮 1,2,3
+    const HIGHLIGHT_EACH_MS = 3000;
+    const GAP_MS = 150;
+
+    // 物理翻卡時間
+    const ASK_FLIP_MS = 2200;      // 數字 -> ？
+    const REVEAL_FLIP_MS = 1200;   // ？ -> 數字（答啱先翻返）
+
+    const NEXT_PROMPT_DELAY_MS = 900;
+    const FEEDBACK_FLASH_MS = 800;
+    const GREAT_JOB_MS = 2500;
+
+    // 轉圈洗牌
+    const CIRCLE_TOTAL_MS = 2400;
+    const CIRCLE_LOOPS = 2.0;
+
+    let state = 'memorize';
+    let layout = [1,2,3];
+    let target = 1;
+    let revealed = [false,false,false];
+
+    let slotX = [0,0,0];
+    let slotY = 0;
+    let cardW = 0;
+    let currentSlotsForCards = [0,1,2];
+
+    let roundTimeout = null;
+    let memorizeToken = 0;
+
+    function shuffle(arr){
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+    // 說話：等佢講完先 resolve
+    function speakAsync(text, opts={}){
+      if (!speakToggle.checked) return Promise.resolve();
+      if (!('speechSynthesis' in window)) return Promise.resolve();
+
+      const { rate = 0.78, pitch = 1.0, volume = 1.0, lang = 'zh-HK' } = opts;
+
+      return new Promise(resolve => {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = rate; u.pitch = pitch; u.volume = volume;
+        u.lang = lang;
+
+        // 盡量揀廣東話聲（有就用）
+        const voices = window.speechSynthesis.getVoices?.() || [];
+        const preferred = voices.find(v => /zh-HK/i.test(v.lang))
+                        || voices.find(v => /yue/i.test(v.lang))
+                        || voices.find(v => /zh/i.test(v.lang));
+        if (preferred) u.voice = preferred;
+
+        const done = () => resolve();
+        u.onend = done;
+        u.onerror = done;
+        window.speechSynthesis.speak(u);
+      });
+    }
+
+    // 說話：唔等
+    function speak(text, opts={}){
+      if (!speakToggle.checked) return;
+      if (!('speechSynthesis' in window)) return;
+
+      const { rate = 0.78, pitch = 1.0, volume = 1.0, lang = 'zh-HK' } = opts;
+
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = rate; u.pitch = pitch; u.volume = volume;
+      u.lang = lang;
+
+      const voices = window.speechSynthesis.getVoices?.() || [];
+      const preferred = voices.find(v => /zh-HK/i.test(v.lang))
+                      || voices.find(v => /yue/i.test(v.lang))
+                      || voices.find(v => /zh/i.test(v.lang));
+      if (preferred) u.voice = preferred;
+
+      window.speechSynthesis.speak(u);
+    }
+
+    function announce(text){ srAnnounce.textContent = text; }
+
+    function setInstruction(big, small){
+      instructionTop.textContent = big;
+      instructionSub.textContent = small || '';
+      announce(big);
+    }
+
+    function setAllDisabled(disabled){
+      tapBtns.forEach(b => b.disabled = disabled);
+    }
+
+    function clearFeedback(){
+      cards.forEach(c => c.classList.remove('correct','wrong'));
+    }
+
+    function clearMemorizeHighlights(){
+      cards.forEach(c => c.classList.remove('memorizeActive'));
+    }
+
+    function measure(){
+      const rect = board.getBoundingClientRect();
+      const gap = 14;
+      cardW = (rect.width - gap*2) / 3;
+      slotX = [0, cardW + gap, 2*(cardW + gap)];
+      slotY = 0;
+      cards.forEach(c => c.style.width = cardW + 'px');
+    }
+
+    function setCardTransform(cardEl, x, y, scale=1, rot=0){
+      cardEl.style.transform = `translate3d(${x}px, ${y}px, 0px) rotate(${rot}deg) scale(${scale})`;
+      cardEl.style.setProperty('--tx', `${x}px`);
+      cardEl.style.setProperty('--ty', `${y}px`);
+    }
+
+    function placeCardsToCurrentSlots(){
+      cards.forEach((cardEl, cardIndex) => {
+        const slotIndex = currentSlotsForCards[cardIndex];
+        setCardTransform(cardEl, slotX[slotIndex], slotY, 1, 0);
+      });
+    }
+
+    function setFrontNumbers(){
+      for (let i = 0; i < 3; i++){
+        numSpans[i].textContent = String(layout[i]);
+      }
+    }
+
+    function setFrontForMemorize(){
+      cards.forEach(card => card.classList.remove('isFlipped'));
+    }
+
+    function flash(cardEl, cls){
+      cardEl.classList.add(cls);
+      setTimeout(() => cardEl.classList.remove(cls), FEEDBACK_FLASH_MS);
+    }
+
+    function showGreatJobOverlay(){
+      bigOverlayTitle.textContent = '叻叻！';
+      bigOverlay.classList.add('show');
+      announce('叻叻！');
+      speak('叻叻！', { rate: 0.82 });
+    }
+
+    function hideGreatJobOverlay(){
+      bigOverlay.classList.remove('show');
+    }
+
+    // 記住階段：逐個講 1,2,3，同時閃框
+    async function runMemorizeSequenceForGrandma(){
+      const myToken = ++memorizeToken;
+      clearMemorizeHighlights();
+
+      for (const value of [1,2,3]){
+        if (memorizeToken !== myToken) return;
+        if (state !== 'memorize') return;
+
+        const idx = layout.indexOf(value);
+        if (idx === -1) continue;
+
+        clearMemorizeHighlights();
+        cards[idx].classList.add('memorizeActive');
+        speak(String(value), { rate: 0.70 });
+
+        await sleep(HIGHLIGHT_EACH_MS);
+
+        if (memorizeToken !== myToken) return;
+        if (state !== 'memorize') return;
+
+        clearMemorizeHighlights();
+        if (value !== 3) await sleep(GAP_MS);
+      }
+
+      clearMemorizeHighlights();
+    }
+
+    async function preShuffleSlowFlipToBack(){
+      const flips = cards.map(c => c.querySelector('.flip'));
+      const easing = 'cubic-bezier(.22,.02,.12,1)';
+
+      cards.forEach((c, i) => {
+        c.classList.add('flipping');
+        c.style.setProperty('--ty', `${(i-1) * 3}px`);
+        c.style.setProperty('--rz', `${(i-1) * 1.2}deg`);
+      });
+
+      flips.forEach(f => f.style.transition = `transform ${PRE_SHUFFLE_FLIP_MS}ms ${easing}`);
+      cards.forEach(c => c.classList.add('isFlipped'));
+
+      await sleep(PRE_SHUFFLE_FLIP_MS + 120);
+
+      flips.forEach(f => f.style.transition = '');
+      cards.forEach(c => {
+        c.classList.remove('flipping');
+        c.style.removeProperty('--ty');
+        c.style.removeProperty('--rz');
+      });
+    }
+
+    async function circularRandomizeToNewSlots(){
+      measure();
+
+      const baseX = cards.map((cardEl, cardIndex) => slotX[currentSlotsForCards[cardIndex]]);
+      const baseY = cards.map(() => slotY);
+
+      const boardRect = board.getBoundingClientRect();
+      const centerX = (boardRect.width / 2) - (cardW / 2);
+      const centerY = 0;
+
+      const radiusX = Math.min(140, boardRect.width * 0.18);
+      const radiusY = Math.min(55, boardRect.height * 0.22);
+
+      cards.forEach(cardEl => cardEl.style.transition = 'none');
+
+      const start = performance.now();
+      const end = start + CIRCLE_TOTAL_MS;
+      const phase = [0, (2*Math.PI)/3, (4*Math.PI)/3];
+
+      await new Promise(resolve => {
+        function tick(now){
+          const t = Math.min(1, (now - start) / CIRCLE_TOTAL_MS);
+          const ease = 1 - Math.pow(1 - t, 3);
+
+          for (let i = 0; i < cards.length; i++){
+            const ang = phase[i] + ease * (2 * Math.PI * CIRCLE_LOOPS);
+            const ox = radiusX * Math.cos(ang);
+            const oy = radiusY * Math.sin(ang);
+
+            const towardCenter = 0.25 * Math.sin(ease * Math.PI);
+            const mixX = (baseX[i] * (1 - towardCenter)) + (centerX * towardCenter);
+            const mixY = (baseY[i] * (1 - towardCenter)) + (centerY * towardCenter);
+
+            const rot = 10 * Math.sin(ang);
+            const scale = 1.03;
+            setCardTransform(cards[i], mixX + ox, mixY + oy, scale, rot);
+          }
+
+          if (now >= end) resolve();
+          else requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+
+      currentSlotsForCards = shuffle([0,1,2]);
+
+      cards.forEach(cardEl => cardEl.style.transition = 'transform 1100ms cubic-bezier(.18,.92,.12,1)');
+      placeCardsToCurrentSlots();
+      await sleep(1150);
+
+      cards.forEach(cardEl => cardEl.style.transition = 'transform 850ms cubic-bezier(.18,.9,.16,1)');
+    }
+
+    async function shuffleAnimation(){
+      state = 'between';
+      setAllDisabled(true);
+      clearFeedback();
+      clearMemorizeHighlights();
+      memorizeToken++;
+
+      setInstruction('而家洗牌。', '');
+      speak('而家洗牌。', { rate: 0.82 });
+
+      await preShuffleSlowFlipToBack();
+      await circularRandomizeToNewSlots();
+
+      layout = shuffle([1,2,3]);
+      setFrontNumbers();
+
+      revealed = [false,false,false];
+    }
+
+    async function flipAllToQuestionMarksSlow(){
+      setAllDisabled(true);
+
+      cards.forEach((c) => {
+        c.style.setProperty('--askFlipMs', `${ASK_FLIP_MS}ms`);
+        c.classList.add('askFlipping', 'flipping');
+        c.classList.add('isFlipped'); // 最後要係背面（？）
+      });
+
+      await sleep(ASK_FLIP_MS + 80);
+
+      cards.forEach(c => c.classList.remove('askFlipping', 'flipping'));
+    }
+
+    async function revealCardPhysical(index){
+      setAllDisabled(true);
+
+      const c = cards[index];
+      c.style.setProperty('--revealFlipMs', `${REVEAL_FLIP_MS}ms`);
+      c.classList.add('revealFlipping', 'flipping');
+
+      c.classList.remove('isFlipped'); // 最後要係正面（數字）
+
+      await sleep(REVEAL_FLIP_MS + 60);
+
+      c.classList.remove('revealFlipping', 'flipping');
+
+      if (state === 'ask') setAllDisabled(false);
+    }
+
+    async function startRound(){
+      if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
+      window.speechSynthesis?.cancel?.();
+      memorizeToken++;
+
+      measure();
+      placeCardsToCurrentSlots();
+
+      state = 'memorize';
+      target = 1;
+      revealed = [false,false,false];
+      clearFeedback();
+      clearMemorizeHighlights();
+
+      layout = shuffle([1,2,3]);
+      setFrontNumbers();
+
+      setFrontForMemorize();
+
+      setInstruction('記住：數字喺邊張卡。', '');
+      await speakAsync('記住：數字喺邊張卡。', { rate: 0.78 });
+
+      await sleep(PAUSE_AFTER_PROMPT_MS);
+
+      runMemorizeSequenceForGrandma();
+
+      const highlightSegmentMs = (HIGHLIGHT_EACH_MS * 3) + (GAP_MS * 2);
+
+      roundTimeout = setTimeout(async () => {
+        state = 'ask';
+        memorizeToken++;
+        clearFeedback();
+        clearMemorizeHighlights();
+
+        await flipAllToQuestionMarksSlow();
+
+        setInstruction('撳 1。', '');
+        speak('撳 1。', { rate: 0.82 });
+        setAllDisabled(false);
+      }, highlightSegmentMs);
+    }
+
+    async function finishRoundAndRestart(){
+      if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
+      memorizeToken++;
+      setAllDisabled(true);
+      clearMemorizeHighlights();
+
+      showGreatJobOverlay();
+      await sleep(GREAT_JOB_MS);
+      hideGreatJobOverlay();
+
+      await shuffleAnimation();
+
+      setFrontForMemorize();
+      await startRound();
+    }
+
+    function handlePick(index){
+      if (state !== 'ask') return;
+
+      const picked = layout[index];
+      const cardEl = cards[index];
+
+      if (picked === target){
+        revealed[index] = true;
+
+        clearFeedback();
+        flash(cardEl, 'correct');
+
+        revealCardPhysical(index);
+
+        // 簡單講法：啱 / 唔啱
+        speak('啱呀。', { rate: 0.82 });
+
+        setTimeout(() => {
+          if (target === 1){
+            target = 2;
+            setInstruction('撳 2。', '');
+            speak('撳 2。', { rate: 0.82 });
+          } else if (target === 2){
+            target = 3;
+            setInstruction('撳 3。', '');
+            speak('撳 3。', { rate: 0.82 });
+          } else {
+            finishRoundAndRestart();
+          }
+        }, NEXT_PROMPT_DELAY_MS);
+      } else {
+        clearFeedback();
+        flash(cardEl, 'wrong');
+        speak('唔係呢張。再試。', { rate: 0.78 });
+      }
+    }
+
+    tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
+    window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
+
+    // 有啲瀏覽器要等 voices ready（唔等都得，但呢度補一補）
+    if ('speechSynthesis' in window){
+      window.speechSynthesis.onvoiceschanged = () => {};
+    }
+
+    setFrontNumbers();
+    startRound();
+  </script>
+</body>
+</html>
