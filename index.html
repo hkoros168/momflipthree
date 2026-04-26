@@ -39,10 +39,16 @@
       background: radial-gradient(1200px 800px at 20% 0%, #ffffff 0%, var(--bg) 55%);
       color: var(--text);
       min-height:100vh;
+
+      /* Move the game a bit higher (more centered on iPad) */
       display:flex;
       align-items:center;
       justify-content:center;
       padding:16px;
+
+      /* Lift slightly upwards relative to true center */
+      padding-top: max(16px, env(safe-area-inset-top));
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
     }
 
     /* Re-allow interactions inside the app */
@@ -58,6 +64,13 @@
       padding:18px;
       box-shadow: 0 20px 60px rgba(11,42,26,0.18);
       position: relative;
+
+      /* lift the whole panel slightly higher */
+      transform: translateY(-4vh);
+    }
+
+    @media (max-height: 700px){
+      .app{ transform: translateY(-2.5vh); }
     }
 
     .instruction{
@@ -146,7 +159,6 @@
       font-size: clamp(72px, 10vw, 96px);
     }
     .back{
-      /* keep the rotate, but add the Z nudge (iPad Safari fix) */
       transform: rotateY(180deg) translateZ(0.2px);
       -webkit-transform: rotateY(180deg) translateZ(0.2px);
 
@@ -155,7 +167,6 @@
       font-size: clamp(64px, 10vw, 88px);
     }
 
-    /* Optional: force GPU layer on containers (helps iPad Safari) */
     .card, .flip{
       -webkit-transform: translateZ(0);
     }
@@ -264,6 +275,10 @@
       }
     }
 
+    /* Make touch/click more forgiving:
+       - ensure full overlay always gets the event
+       - remove 300ms delays (old)
+       - prevent accidental selection / double-tap zoom behaviors */
     .tapBtn{
       position:absolute;
       inset:0;
@@ -273,7 +288,17 @@
       background: transparent;
       cursor:pointer;
       border-radius:20px;
-      z-index:5;
+      z-index:20;
+
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation; /* allow taps, stop scroll/zoom gestures */
+    }
+    .tapBtn:active{
+      /* tiny feedback so grandma knows it registered */
+      transform: scale(0.995);
     }
     .tapBtn:focus{
       outline: 4px solid var(--accentRing);
@@ -917,7 +942,36 @@
       }
     }
 
+    /* More sensitive touch:
+       - use Pointer Events (works for both touch + mouse)
+       - also add touchstart fallback
+       - use event delegation on .board so taps always register even if Safari misses "click" */
+    function indexFromEventTarget(targetEl){
+      const btn = targetEl && targetEl.closest ? targetEl.closest('.tapBtn') : null;
+      if (!btn) return -1;
+      const card = btn.parentElement;
+      if (!card) return -1;
+      const idx = cards.indexOf(card);
+      return idx;
+    }
+
+    board.addEventListener('pointerdown', (e) => {
+      // Prevent double-tap zoom / selection oddities
+      e.preventDefault();
+      const idx = indexFromEventTarget(e.target);
+      if (idx >= 0) handlePick(idx);
+    }, { passive: false });
+
+    board.addEventListener('touchstart', (e) => {
+      // Fallback for older iPad Safari edge cases
+      e.preventDefault();
+      const idx = indexFromEventTarget(e.target);
+      if (idx >= 0) handlePick(idx);
+    }, { passive: false });
+
+    // Keep the original click too (harmless, helps desktop)
     tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
+
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
     if ('speechSynthesis' in window && window.speechSynthesis){
