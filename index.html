@@ -6,10 +6,9 @@
   <title>記憶遊戲（1–2–3）</title>
   <style>
     :root{
-      /* LIGHTER GREEN THEME */
-      --bg:#dff7ea;              /* page background */
-      --card:#bff2d6;            /* card gradient top */
-      --card2:#9ae8c3;           /* card gradient bottom */
+      --bg:#dff7ea;
+      --card:#bff2d6;
+      --card2:#9ae8c3;
 
       --text:#0b2a1a;
       --muted:#1d5a3a;
@@ -17,11 +16,11 @@
       --good:#16a34a;
       --bad:#e11d48;
 
-      --accent:#22c55e;          /* highlight glow */
+      --accent:#22c55e;
       --accentSoft:rgba(34,197,94,0.16);
       --accentRing:rgba(34,197,94,0.45);
 
-      /* NEW: dark green emphasize color for memorize highlight */
+      /* dark green emphasize color for memorize highlight */
       --emphDark1:#0f3d2a;
       --emphDark2:#0b2f21;
       --emphText:#eafff3;
@@ -310,7 +309,7 @@
       box-shadow: inset 0 0 0 3px rgba(225,29,72,0.22);
     }
 
-    /* UPDATED: When highlighting during memorize, make it DARK GREEN */
+    /* highlight during memorize: DARK GREEN */
     .card.memorizeActive .overlay{
       opacity:1;
       background: linear-gradient(180deg, rgba(15,61,42,0.60), rgba(11,47,33,0.38));
@@ -458,6 +457,7 @@
   </div>
 
   <script>
+    // Keep: prevent page scroll (iPad)
     document.addEventListener('touchmove', function(e){
       e.preventDefault();
     }, { passive: false });
@@ -503,6 +503,9 @@
 
     let roundTimeout = null;
     let memorizeToken = 0;
+
+    /* NEW: input lock prevents double-advance if iOS fires multiple events */
+    let inputLock = false;
 
     function shuffle(arr){
       const a = arr.slice();
@@ -681,7 +684,6 @@
       const myToken = ++memorizeToken;
       clearMemorizeHighlights();
 
-      // Highlight in order 1, then 2, then 3 (as requested)
       for (const value of [1,2,3]){
         if (memorizeToken !== myToken) return;
         if (state !== 'memorize') return;
@@ -830,7 +832,6 @@
       if (state === 'ask') setAllDisabled(false);
     }
 
-    // Ensures it asks 1, then 2, then 3 (and resets each round)
     function askFor(n){
       target = n;
       setInstruction(`撳 ${n}。`, '');
@@ -841,6 +842,7 @@
       if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
       safeCancelSpeech();
       memorizeToken++;
+      inputLock = false;
 
       measure();
       placeCardsToCurrentSlots();
@@ -872,6 +874,7 @@
         memorizeToken++;
         clearFeedback();
         clearMemorizeHighlights();
+        inputLock = false;
 
         await flipAllToQuestionMarksSlow();
 
@@ -883,6 +886,7 @@
     async function finishRoundAndRestart(){
       if (roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
       memorizeToken++;
+      inputLock = true;
       setAllDisabled(true);
       clearMemorizeHighlights();
 
@@ -898,6 +902,8 @@
 
     function handlePick(index){
       if (state !== 'ask') return;
+      if (inputLock) return;           // NEW guard
+      inputLock = true;
 
       const picked = layout[index];
       const cardEl = cards[index];
@@ -920,11 +926,16 @@
           } else {
             finishRoundAndRestart();
           }
+          // unlock after we’ve advanced the prompt
+          inputLock = false;
         }, NEXT_PROMPT_DELAY_MS);
       } else {
         clearFeedback();
         flash(cardEl, 'wrong');
         speak('唔係呢張。再試。', { rate: 0.78 });
+
+        // allow another try shortly
+        setTimeout(() => { inputLock = false; }, 220);
       }
     }
 
@@ -937,19 +948,13 @@
       return idx;
     }
 
+    /* FIX: Use ONE event path only (pointer events).
+       Remove touchstart and remove click handlers to avoid double-firing on iPad. */
     board.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const idx = indexFromEventTarget(e.target);
       if (idx >= 0) handlePick(idx);
     }, { passive: false });
-
-    board.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const idx = indexFromEventTarget(e.target);
-      if (idx >= 0) handlePick(idx);
-    }, { passive: false });
-
-    tapBtns.forEach((btn, i) => btn.addEventListener('click', () => handlePick(i)));
 
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
