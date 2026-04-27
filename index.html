@@ -353,7 +353,6 @@
       overflow:hidden;
     }
 
-    /* Bottom-right toggle */
     .speakCorner{
       position: fixed;
       right: 14px;
@@ -375,7 +374,6 @@
     }
     .speakCorner input{ transform: scale(1.35); }
 
-    /* iPad-safe: a big explicit "unlock speech" button like your working demo */
     .voiceBar{
       position: fixed;
       left: 50%;
@@ -434,7 +432,6 @@
   </style>
 </head>
 <body>
-  <!-- Speech unlock bar (big explicit user-gesture button) -->
   <div class="voiceBar" aria-label="聲音控制">
     <button class="voiceBtn" id="voiceBtn" type="button">🔊 聽聲（撳一次）</button>
     <span class="voiceHint" id="voiceHint">已開聲</span>
@@ -528,6 +525,9 @@
     const PRE_SHUFFLE_FLIP_MS = 3200;
     const PAUSE_AFTER_PROMPT_MS = 2000;
 
+    // NEW: wait after showing cards before emphasizing
+    const WAIT_BEFORE_EMPHASIS_MS = 3000;
+
     const HIGHLIGHT_EACH_MS = 3000;
     const GAP_MS = 150;
 
@@ -582,7 +582,7 @@
       osc.stop(t0 + duration + 0.03);
     }
 
-    // ======= iPad-safe Speech (simple like your working demo) =======
+    // ======= iPad-safe Speech =======
     let cachedVoices = [];
     let cantVoice = null;
     let speechEnabled = false;
@@ -600,16 +600,13 @@
     function pickCantoneseVoice(voices){
       const norm = (s) => String(s || "").toLowerCase();
 
-      // Prefer zh-HK
       let v = voices.find(v => norm(v.lang).startsWith("zh-hk"));
       if (v) return v;
 
-      // Name hints (copied idea from your working code)
       const nameHints = ["sin-ji","sinji","hong kong","hk","cantonese","粵","粤"];
       v = voices.find(v => nameHints.some(h => norm(v.name).includes(h)));
       if (v) return v;
 
-      // Fallback to any zh
       v = voices.find(v => norm(v.lang).startsWith("zh"));
       return v || null;
     }
@@ -721,6 +718,11 @@
     async function runMemorizeSequence(){
       const myToken = ++memorizeToken;
       clearMemorizeHighlights();
+
+      // NEW: wait 3 seconds after the cards are shown before emphasizing
+      await sleep(WAIT_BEFORE_EMPHASIS_MS);
+      if (memorizeToken !== myToken) return;
+      if (state !== 'memorize') return;
 
       for (const value of [1,2,3]){
         if (memorizeToken !== myToken) return;
@@ -890,9 +892,11 @@
 
       await sleep(PAUSE_AFTER_PROMPT_MS);
 
+      // NOTE: runMemorizeSequence now includes the extra 3s wait
       runMemorizeSequence();
 
-      const highlightSegmentMs = (HIGHLIGHT_EACH_MS * 3) + (GAP_MS * 2);
+      const highlightSegmentMs =
+        WAIT_BEFORE_EMPHASIS_MS + (HIGHLIGHT_EACH_MS * 3) + (GAP_MS * 2);
 
       roundTimeout = setTimeout(async () => {
         state = 'ask';
@@ -974,9 +978,8 @@
 
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
-    // ======= Voice unlock button (critical for iPad) =======
+    // ======= Voice unlock button =======
     voiceBtn.addEventListener('click', () => {
-      // Must happen inside the click:
       ensureAudio();
       refreshVoices();
 
@@ -986,28 +989,22 @@
       voiceBtn.textContent = "🔊 已開聲";
       voiceHint.classList.add('show');
 
-      // Speak immediately INSIDE the gesture:
       beep({freq: 660, duration: 0.09, gain: 0.02});
       speak("你好！");
     });
 
-    // If they turn off the toggle, just stop speaking (don’t break unlock)
     speakToggle.addEventListener('change', () => {
       if (!speakToggle.checked){
-        // Keep speechEnabled false, don’t cancel aggressively.
         speechEnabled = false;
       } else {
-        // If they turn it back on later, refresh voices and allow speaking.
         refreshVoices();
         speechEnabled = true;
       }
     });
 
-    // Start locked until they press the voice button
     speechEnabled = false;
     speakToggle.checked = false;
 
-    // Start game
     setFrontNumbers();
     startRound();
   </script>
