@@ -353,6 +353,7 @@
       overflow:hidden;
     }
 
+    /* Bottom-right toggle */
     .speakCorner{
       position: fixed;
       right: 14px;
@@ -374,96 +375,71 @@
     }
     .speakCorner input{ transform: scale(1.35); }
 
-    /* Audio gate overlay */
-    .audioGate{
+    /* iPad-safe: a big explicit "unlock speech" button like your working demo */
+    .voiceBar{
       position: fixed;
-      inset: 0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      left: 50%;
+      top: 12px;
+      transform: translateX(-50%);
       z-index: 12000;
-      background: rgba(0,0,0,0.55);
-      padding: 18px;
+      width: min(820px, calc(100% - 24px));
+      display:flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
     }
-    .audioGateCard{
-      width: min(620px, 100%);
-      border-radius: 18px;
-      background: rgba(255,255,255,0.94);
-      border: 1px solid rgba(11,42,26,0.16);
-      box-shadow: 0 22px 70px rgba(0,0,0,0.35);
-      padding: 18px;
-      text-align:center;
-    }
-    .audioGateCard h3{
-      margin: 0 0 8px 0;
-      font-size: 22px;
-      font-weight: 1000;
-      color: var(--text);
-    }
-    .audioGateCard p{
-      margin: 0 0 14px 0;
-      color: var(--muted);
-      font-weight: 850;
-      line-height: 1.3;
-    }
-    .audioStatus{
-      margin-top: 10px;
-      font-weight: 950;
-      color: rgba(11,42,26,0.9);
-      line-height: 1.25;
-      min-height: 1.25em;
-    }
-    .smallNote{
-      margin-top: 10px;
-      font-size: 13px;
-      color: rgba(11,42,26,0.75);
-      font-weight: 800;
-      line-height: 1.25;
-      text-align: left;
-    }
-    .audioBtn{
-      appearance: none;
-      border: 0;
-      border-radius: 14px;
-      padding: 14px 16px;
-      width: 100%;
-      font-size: 18px;
-      font-weight: 1000;
-      color: #08301e;
-      background: linear-gradient(180deg, rgba(34,197,94,0.95), rgba(34,197,94,0.75));
-      box-shadow: 0 10px 26px rgba(34,197,94,0.25);
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .audioBtn:active{ transform: scale(0.99); }
-    .audioBtn:focus{
-      outline: 4px solid var(--accentRing);
-      outline-offset: 3px;
-    }
-    .audioBtnSecondary{
-      margin-top: 10px;
-      appearance: none;
+    .voiceBtn{
+      appearance:none;
       border: 1px solid rgba(11,42,26,0.18);
-      border-radius: 14px;
-      padding: 12px 16px;
-      width: 100%;
-      font-size: 16px;
-      font-weight: 950;
-      background: rgba(255,255,255,0.9);
-      cursor: pointer;
+      background: rgba(255,255,255,0.78);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 14px 18px;
+      font-size: 20px;
+      font-weight: 1000;
+      letter-spacing: .2px;
+      cursor:pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 10px 26px rgba(11,42,26,0.12);
     }
+    .voiceBtn:active{ transform: scale(0.99); }
+    .voiceBtn:focus{ outline:none; }
+    .voiceBtn:focus-visible{ box-shadow: 0 0 0 8px rgba(34,197,94,0.22); }
+
+    .voiceHint{
+      font-weight: 950;
+      color: rgba(11,42,26,0.78);
+      background: rgba(255,255,255,0.55);
+      border: 1px solid rgba(11,42,26,0.10);
+      border-radius: 999px;
+      padding: 10px 12px;
+      font-size: 14px;
+      display:none;
+    }
+    .voiceHint.show{ display:inline-flex; }
 
     @media (max-width: 520px){
       .board{ height: 170px; }
       .card{ height: 170px; }
       .speakCorner{ right: 10px; bottom: 10px; }
+      .voiceBtn{ font-size: 18px; padding: 12px 14px; }
+      .voiceHint{ font-size: 13px; }
     }
+
     @media (prefers-reduced-motion: reduce){
       .card, .flip, .overlay{ transition: none !important; animation: none !important; }
     }
   </style>
 </head>
 <body>
+  <!-- Speech unlock bar (big explicit user-gesture button) -->
+  <div class="voiceBar" aria-label="聲音控制">
+    <button class="voiceBtn" id="voiceBtn" type="button">🔊 聽聲（撳一次）</button>
+    <span class="voiceHint" id="voiceHint">已開聲</span>
+  </div>
+
   <div class="app" role="application" aria-label="記憶遊戲 1 2 3">
     <div>
       <p class="instruction" id="instructionTop">記住：數字喺邊張卡。</p>
@@ -528,23 +504,6 @@
     <h2 id="bigOverlayTitle">叻叻！</h2>
   </div>
 
-  <div class="audioGate" id="audioGate" role="dialog" aria-modal="true" aria-label="開啟聲音">
-    <div class="audioGateCard">
-      <h3>開啟聲音</h3>
-      <p>
-        iPhone / iPad 需要先「撳一下」先可以出聲。<br/>
-        請按「開啟聲音」。
-      </p>
-      <button class="audioBtn" id="enableAudioBtn" type="button">開啟聲音（會試播）</button>
-      <button class="audioBtnSecondary" id="noAudioBtn" type="button">暫時唔開（靜音）</button>
-      <div class="audioStatus" id="audioStatus"></div>
-      <div class="smallNote">
-        如果「嗶」聲有，但說話無：通常係 iOS 語音（Speech）卡住咗。呢個版本已經改用「排隊播」同埋避免頻繁 cancel，通常可以復活。<br/>
-        仍然唔得就：關 Safari 再開、或者重啟 iPad。
-      </div>
-    </div>
-  </div>
-
   <script>
     document.addEventListener('touchmove', function(e){
       e.preventDefault();
@@ -558,10 +517,8 @@
     const bigOverlay = document.getElementById('bigOverlay');
     const bigOverlayTitle = document.getElementById('bigOverlayTitle');
 
-    const audioGate = document.getElementById('audioGate');
-    const enableAudioBtn = document.getElementById('enableAudioBtn');
-    const noAudioBtn = document.getElementById('noAudioBtn');
-    const audioStatus = document.getElementById('audioStatus');
+    const voiceBtn = document.getElementById('voiceBtn');
+    const voiceHint = document.getElementById('voiceHint');
 
     const board = document.querySelector('.board');
     const cards = Array.from(document.querySelectorAll('.card'));
@@ -598,56 +555,88 @@
     let memorizeToken = 0;
     let inputLock = false;
 
-    // ======= AUDIO / iOS UNLOCK =======
-    let audioPathUnlocked = false;
-
+    // ======= AUDIO (BEEP) =======
     let audioCtx = null;
-
-    function setStatus(msg){
-      audioStatus.textContent = msg || '';
-    }
-
-    async function ensureAudioContextRunningInGesture(){
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return false;
-
-      if (!audioCtx) audioCtx = new Ctx();
-
-      if (audioCtx.state === 'suspended'){
-        try { await audioCtx.resume(); } catch (e) {}
+    function ensureAudio(){
+      if (!audioCtx){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
       }
-
-      return audioCtx.state === 'running';
+      if (audioCtx && audioCtx.state === "suspended"){
+        audioCtx.resume().catch(()=>{});
+      }
+    }
+    function beep({freq=660, duration=0.12, type="sine", gain=0.02} = {}){
+      if (!audioCtx) return;
+      const t0 = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0 + duration + 0.03);
     }
 
-    async function beepOnce(){
-      const ok = await ensureAudioContextRunningInGesture();
-      if (!ok) return false;
+    // ======= iPad-safe Speech (simple like your working demo) =======
+    let cachedVoices = [];
+    let cantVoice = null;
+    let speechEnabled = false;
 
+    function refreshVoices(){
+      if (!("speechSynthesis" in window)) return;
       try{
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.type = 'sine';
-        o.frequency.value = 660;
-        g.gain.value = 0.02;
-
-        o.connect(g);
-        g.connect(audioCtx.destination);
-
-        o.start();
-        setTimeout(() => {
-          try{ o.stop(); }catch(e){}
-          try{ o.disconnect(); g.disconnect(); }catch(e){}
-        }, 130);
-
-        return true;
+        cachedVoices = window.speechSynthesis.getVoices() || [];
       }catch(e){
-        return false;
+        cachedVoices = [];
       }
+      cantVoice = pickCantoneseVoice(cachedVoices);
     }
 
-    function canSpeak(){
-      return speakToggle.checked && audioPathUnlocked;
+    function pickCantoneseVoice(voices){
+      const norm = (s) => String(s || "").toLowerCase();
+
+      // Prefer zh-HK
+      let v = voices.find(v => norm(v.lang).startsWith("zh-hk"));
+      if (v) return v;
+
+      // Name hints (copied idea from your working code)
+      const nameHints = ["sin-ji","sinji","hong kong","hk","cantonese","粵","粤"];
+      v = voices.find(v => nameHints.some(h => norm(v.name).includes(h)));
+      if (v) return v;
+
+      // Fallback to any zh
+      v = voices.find(v => norm(v.lang).startsWith("zh"));
+      return v || null;
+    }
+
+    if ("speechSynthesis" in window){
+      refreshVoices();
+      try{
+        window.speechSynthesis.onvoiceschanged = () => refreshVoices();
+      }catch(e){}
+    }
+
+    function speak(text){
+      if (!speechEnabled) return;
+      if (!("speechSynthesis" in window)) return;
+
+      const t = String(text || "").trim();
+      if (!t) return;
+
+      try { window.speechSynthesis.cancel(); } catch(e){}
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = "zh-HK";
+      if (cantVoice) u.voice = cantVoice;
+      u.rate = 0.95;
+      u.pitch = 1.0;
+      u.volume = 1.0;
+
+      try { window.speechSynthesis.speak(u); } catch(e){}
     }
 
     function announce(text){ srAnnounce.textContent = text; }
@@ -722,130 +711,14 @@
       bigOverlayTitle.textContent = '叻叻！';
       bigOverlay.classList.add('show');
       announce('叻叻！');
-      speak('叻叻！', { rate: 0.82 });
+      speak('叻叻！');
     }
 
     function hideGreatJobOverlay(){
       bigOverlay.classList.remove('show');
     }
 
-    // ===== Robust iOS Speech (Cantonese) =====
-    let speechQueue = Promise.resolve();
-    let lastSpokenAt = 0;
-
-    function ss(){
-      return (window.speechSynthesis && typeof window.speechSynthesis.speak === 'function')
-        ? window.speechSynthesis
-        : null;
-    }
-
-    function getVoicesSafe(){
-      try{
-        const s = ss();
-        if (!s || typeof s.getVoices !== 'function') return [];
-        return s.getVoices() || [];
-      }catch(_){
-        return [];
-      }
-    }
-
-    function pickCantoneseVoice(){
-      const voices = getVoicesSafe();
-      return (
-        voices.find(v => /zh-HK/i.test(v.lang)) ||
-        voices.find(v => /yue/i.test(v.lang)) ||
-        voices.find(v => /zh/i.test(v.lang)) ||
-        null
-      );
-    }
-
-    function kickSpeechEngine(){
-      try{
-        const s = ss();
-        if (!s) return;
-        const now = Date.now();
-        if (now - lastSpokenAt < 250) return;
-
-        const u = new SpeechSynthesisUtterance(' ');
-        u.volume = 0;
-        u.rate = 1;
-        u.lang = 'zh-HK';
-        s.speak(u);
-      }catch(_){}
-    }
-
-    function softClearQueue(){
-      try{
-        const s = ss();
-        if (!s) return;
-        if (!s.speaking && s.pending) s.cancel();
-      }catch(_){}
-    }
-
-    async function speakEnqueued(text, opts = {}){
-      if (!canSpeak()) return;
-      const s = ss();
-      if (!s) return;
-
-      const t = String(text ?? '').trim();
-      if (!t) return;
-
-      speechQueue = speechQueue.then(() => new Promise(resolve => {
-        try{
-          kickSpeechEngine();
-          softClearQueue();
-
-          // Prime voices list (sometimes empty initially)
-          try{ s.getVoices(); }catch(_){}
-
-          const u = new SpeechSynthesisUtterance(t);
-          u.rate = opts.rate ?? 0.85;
-          u.pitch = opts.pitch ?? 1.0;
-          u.volume = opts.volume ?? 1.0;
-
-          u.lang = opts.lang ?? 'zh-HK';
-          const v = pickCantoneseVoice();
-          if (v) u.voice = v;
-
-          let done = false;
-          const finish = () => { if (!done){ done = true; resolve(); } };
-
-          u.onend = finish;
-          u.onerror = finish;
-
-          setTimeout(finish, opts.timeoutMs ?? 2500);
-
-          s.speak(u);
-          lastSpokenAt = Date.now();
-        }catch(_){
-          resolve();
-        }
-      }));
-
-      return speechQueue;
-    }
-
-    function speak(text, opts = {}){ speakEnqueued(text, opts); }
-    function speakAsync(text, opts = {}){ return speakEnqueued(text, opts); }
-
-    async function speakOnceInGesture(text){
-      if (!('speechSynthesis' in window) || !window.speechSynthesis) return false;
-      try{
-        try{ window.speechSynthesis.getVoices(); }catch(_){}
-        await speakEnqueued(text, { rate: 0.95, timeoutMs: 1800 });
-        return true;
-      }catch(_){
-        return false;
-      }
-    }
-
-    // Voice init (best effort)
-    if ('speechSynthesis' in window && window.speechSynthesis){
-      try { window.speechSynthesis.getVoices(); } catch(e) {}
-      try { window.speechSynthesis.onvoiceschanged = function(){}; } catch(e) {}
-    }
-
-    async function runMemorizeSequenceForGrandma(){
+    async function runMemorizeSequence(){
       const myToken = ++memorizeToken;
       clearMemorizeHighlights();
 
@@ -858,7 +731,7 @@
 
         clearMemorizeHighlights();
         cards[idx].classList.add('memorizeActive');
-        speak(String(value), { rate: 0.70 });
+        speak(String(value));
 
         await sleep(HIGHLIGHT_EACH_MS);
 
@@ -876,23 +749,14 @@
       const flips = cards.map(c => c.querySelector('.flip'));
       const easing = 'cubic-bezier(.22,.02,.12,1)';
 
-      cards.forEach((c, i) => {
-        c.classList.add('flipping');
-        c.style.setProperty('--ty', `${(i-1) * 3}px`);
-        c.style.setProperty('--rz', `${(i-1) * 1.2}deg`);
-      });
-
+      cards.forEach((c) => c.classList.add('flipping'));
       flips.forEach(f => f.style.transition = `transform ${PRE_SHUFFLE_FLIP_MS}ms ${easing}`);
       cards.forEach(c => c.classList.add('isFlipped'));
 
       await sleep(PRE_SHUFFLE_FLIP_MS + 120);
 
       flips.forEach(f => f.style.transition = '');
-      cards.forEach(c => {
-        c.classList.remove('flipping');
-        c.style.removeProperty('--ty');
-        c.style.removeProperty('--rz');
-      });
+      cards.forEach(c => c.classList.remove('flipping'));
     }
 
     async function circularRandomizeToNewSlots(){
@@ -956,7 +820,7 @@
       memorizeToken++;
 
       setInstruction('而家洗牌。', '');
-      speak('而家洗牌。', { rate: 0.82 });
+      speak('而家洗牌。');
 
       await preShuffleSlowFlipToBack();
       await circularRandomizeToNewSlots();
@@ -999,7 +863,7 @@
     function askFor(n){
       target = n;
       setInstruction(`撳 ${n}。`, '');
-      speak(`撳 ${n}。`, { rate: 0.82 });
+      speak(`撳 ${n}。`);
     }
 
     async function startRound(){
@@ -1022,11 +886,11 @@
       setFrontForMemorize();
 
       setInstruction('記住：數字喺邊張卡。', '');
-      await speakAsync('記住：數字喺邊張卡。', { rate: 0.78 });
+      speak('記住：數字喺邊張卡。');
 
       await sleep(PAUSE_AFTER_PROMPT_MS);
 
-      runMemorizeSequenceForGrandma();
+      runMemorizeSequence();
 
       const highlightSegmentMs = (HIGHLIGHT_EACH_MS * 3) + (GAP_MS * 2);
 
@@ -1077,7 +941,7 @@
 
         revealCardPhysical(index);
 
-        speak('啱呀。', { rate: 0.82 });
+        speak('啱呀。');
 
         setTimeout(() => {
           if (target === 1) askFor(2);
@@ -1089,7 +953,7 @@
       } else {
         clearFeedback();
         flash(cardEl, 'wrong');
-        speak('唔係呢張。再試。', { rate: 0.78 });
+        speak('唔係呢張。再試。');
         setTimeout(() => { inputLock = false; }, 220);
       }
     }
@@ -1110,60 +974,38 @@
 
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
-    function setAudioGateVisible(visible){
-      audioGate.style.display = visible ? 'flex' : 'none';
-    }
+    // ======= Voice unlock button (critical for iPad) =======
+    voiceBtn.addEventListener('click', () => {
+      // Must happen inside the click:
+      ensureAudio();
+      refreshVoices();
 
-    // Start locked
-    audioPathUnlocked = false;
-    speakToggle.checked = false;
-    speakToggle.disabled = true;
-    setStatus('');
-    setAudioGateVisible(true);
-
-    enableAudioBtn.addEventListener('click', async () => {
-      setStatus('正在開啟…（先試「嗶」聲，再試廣東話）');
-
-      const beepOk = await beepOnce();
-      if (!beepOk){
-        setStatus('無法播放「嗶」聲：可能被靜音／音量 0／或瀏覽器唔容許。請先調大音量再試。');
-        return;
-      }
-
-      audioPathUnlocked = true;
-
-      // IMPORTANT: test speech right inside this user gesture
-      const speechOk = await speakOnceInGesture('語音已開啟');
-      speakToggle.disabled = false;
-
-      if (!speechOk){
-        speakToggle.checked = false;
-        setStatus('「嗶」聲有，但廣東話無：Safari 的語音引擎可能卡住。請關 Safari 再開／或重啟 iPad。');
-        return;
-      }
-
+      speechEnabled = true;
       speakToggle.checked = true;
-      setAudioGateVisible(false);
-      setStatus('');
 
-      speak(instructionTop.textContent || '開始。', { rate: 0.85 });
+      voiceBtn.textContent = "🔊 已開聲";
+      voiceHint.classList.add('show');
+
+      // Speak immediately INSIDE the gesture:
+      beep({freq: 660, duration: 0.09, gain: 0.02});
+      speak("你好！");
     });
 
-    noAudioBtn.addEventListener('click', () => {
-      audioPathUnlocked = false;
-      speakToggle.disabled = false;
-      speakToggle.checked = false;
-      setAudioGateVisible(false);
-      setStatus('');
-    });
-
+    // If they turn off the toggle, just stop speaking (don’t break unlock)
     speakToggle.addEventListener('change', () => {
-      if (speakToggle.checked && !audioPathUnlocked){
-        speakToggle.checked = false;
-        setAudioGateVisible(true);
-        setStatus('請先按「開啟聲音」。');
+      if (!speakToggle.checked){
+        // Keep speechEnabled false, don’t cancel aggressively.
+        speechEnabled = false;
+      } else {
+        // If they turn it back on later, refresh voices and allow speaking.
+        refreshVoices();
+        speechEnabled = true;
       }
     });
+
+    // Start locked until they press the voice button
+    speechEnabled = false;
+    speakToggle.checked = false;
 
     // Start game
     setFrontNumbers();
