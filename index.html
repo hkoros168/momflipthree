@@ -17,7 +17,6 @@
       --bad:#e11d48;
 
       --accent:#22c55e;
-      --accentSoft:rgba(34,197,94,0.16);
       --accentRing:rgba(34,197,94,0.45);
 
       --emphDark1:#0f3d2a;
@@ -318,7 +317,6 @@
       filter: drop-shadow(0 0 20px rgba(15,61,42,0.40));
       transform: scale(1.06);
     }
-    .card.memorizeActive .shine{ opacity: 0.12; }
     .card.memorizeActive .shade{ opacity: 0.35; }
 
     .bigOverlay{
@@ -355,7 +353,6 @@
       overflow:hidden;
     }
 
-    /* Bottom-right toggle */
     .speakCorner{
       position: fixed;
       right: 14px;
@@ -377,7 +374,7 @@
     }
     .speakCorner input{ transform: scale(1.35); }
 
-    /* NEW: Enable Audio button */
+    /* Audio gate overlay */
     .audioGate{
       position: fixed;
       inset: 0;
@@ -389,9 +386,9 @@
       padding: 18px;
     }
     .audioGateCard{
-      width: min(520px, 100%);
+      width: min(560px, 100%);
       border-radius: 18px;
-      background: rgba(255,255,255,0.92);
+      background: rgba(255,255,255,0.94);
       border: 1px solid rgba(11,42,26,0.16);
       box-shadow: 0 22px 70px rgba(0,0,0,0.35);
       padding: 18px;
@@ -408,6 +405,13 @@
       color: var(--muted);
       font-weight: 850;
       line-height: 1.3;
+    }
+    .audioStatus{
+      margin-top: 10px;
+      font-weight: 950;
+      color: rgba(11,42,26,0.9);
+      line-height: 1.25;
+      min-height: 1.25em;
     }
     .audioBtn{
       appearance: none;
@@ -507,9 +511,8 @@
     </div>
   </div>
 
-  <!-- Audio toggle (bottom-right) -->
+  <!-- Bottom-right toggle -->
   <label class="speakCorner" title="會出聲（如果支援）。">
-    <!-- start unchecked; becomes usable after enabling -->
     <input id="speakToggle" type="checkbox" />
     <span>出聲</span>
   </label>
@@ -518,17 +521,22 @@
     <h2 id="bigOverlayTitle">叻叻！</h2>
   </div>
 
-  <!-- NEW: Audio gate overlay shown after refresh -->
-  <div class="audioGate" id="audioGate" role="dialog" aria-modal="true" aria-label="開啟語音">
+  <!-- Audio gate overlay (iOS needs a click) -->
+  <div class="audioGate" id="audioGate" role="dialog" aria-modal="true" aria-label="開啟聲音">
     <div class="audioGateCard">
-      <h3>開啟語音</h3>
-      <p>iPad 需要先撳一下先可以出聲。<br/>請按下面「開啟語音」。</p>
-      <button class="audioBtn" id="enableAudioBtn" type="button">開啟語音</button>
+      <h3>開啟聲音</h3>
+      <p>
+        iPhone / iPad 需要先「撳一下」先可以出聲。<br/>
+        請按「開啟聲音」。
+      </p>
+      <button class="audioBtn" id="enableAudioBtn" type="button">開啟聲音</button>
       <button class="audioBtnSecondary" id="noAudioBtn" type="button">暫時唔開（靜音）</button>
+      <div class="audioStatus" id="audioStatus"></div>
     </div>
   </div>
 
   <script>
+    // Prevent scroll / bounce
     document.addEventListener('touchmove', function(e){
       e.preventDefault();
     }, { passive: false });
@@ -544,6 +552,7 @@
     const audioGate = document.getElementById('audioGate');
     const enableAudioBtn = document.getElementById('enableAudioBtn');
     const noAudioBtn = document.getElementById('noAudioBtn');
+    const audioStatus = document.getElementById('audioStatus');
 
     const board = document.querySelector('.board');
     const cards = Array.from(document.querySelectorAll('.card'));
@@ -580,19 +589,57 @@
     let memorizeToken = 0;
     let inputLock = false;
 
-    // NEW: Audio must be explicitly unlocked
+    // ======= AUDIO / iOS UNLOCK =======
+    // audioUnlocked means: user clicked and we successfully started at least one audio path.
     let audioUnlocked = false;
 
-    function shuffle(arr){
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--){
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
+    // WebAudio (more reliable unlock than speechSynthesis on iOS)
+    let audioCtx = null;
+
+    function setStatus(msg){
+      if (audioStatus) audioStatus.textContent = msg || '';
     }
 
-    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+    async function ensureAudioContextRunningInGesture(){
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return false;
+
+      if (!audioCtx) audioCtx = new Ctx();
+
+      if (audioCtx.state === 'suspended'){
+        try { await audioCtx.resume(); } catch (e) {}
+      }
+
+      return audioCtx.state === 'running';
+    }
+
+    async function beepOnce(){
+      const ok = await ensureAudioContextRunningInGesture();
+      if (!ok) return false;
+
+      try{
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.value = 660;
+
+        // Low volume beep (still audible if volume is up)
+        g.gain.value = 0.02;
+
+        o.connect(g);
+        g.connect(audioCtx.destination);
+
+        o.start();
+        setTimeout(() => {
+          try{ o.stop(); }catch(e){}
+          try{ o.disconnect(); g.disconnect(); }catch(e){}
+        }, 120);
+
+        return true;
+      }catch(e){
+        return false;
+      }
+    }
 
     function safeCancelSpeech(){
       try{
@@ -613,6 +660,30 @@
             || null;
       }catch(_){
         return null;
+      }
+    }
+
+    // IMPORTANT: iOS reliability is better with click; and we avoid blocking on onend.
+    function speechTestInGesture(){
+      try{
+        if (!('speechSynthesis' in window) || !window.speechSynthesis) return false;
+
+        // Often helps on iOS to call getVoices() before first speak.
+        try{ window.speechSynthesis.getVoices(); }catch(e){}
+
+        safeCancelSpeech();
+        const u = new SpeechSynthesisUtterance('語音已開啟');
+        u.lang = 'zh-HK';
+        u.rate = 0.95;
+        u.volume = 1.0;
+
+        const v = pickCantoneseVoice();
+        if (v) u.voice = v;
+
+        window.speechSynthesis.speak(u);
+        return true;
+      }catch(e){
+        return false;
       }
     }
 
@@ -662,7 +733,8 @@
             u.onend = finish;
             u.onerror = finish;
 
-            setTimeout(finish, 1500);
+            // Safety timeout
+            setTimeout(finish, 1700);
             window.speechSynthesis.speak(u);
           }catch(_){
             finish();
@@ -693,6 +765,17 @@
       cards.forEach(c => c.classList.remove('memorizeActive'));
     }
 
+    function shuffle(arr){
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
     function measure(){
       const rect = board.getBoundingClientRect();
       const gap = 14;
@@ -712,6 +795,14 @@
       cards.forEach((cardEl, cardIndex) => {
         const slotIndex = currentSlotsForCards[cardIndex];
         setCardTransform(cardEl, slotX[slotIndex], slotY, 1, 0);
+      });
+    }
+
+    function setCardSlotCssVars(){
+      cards.forEach((cardEl, cardIndex) => {
+        const slotIndex = currentSlotsForCards[cardIndex];
+        cardEl.style.setProperty('--tx', `${slotX[slotIndex]}px`);
+        cardEl.style.setProperty('--ty', `${slotY}px`);
       });
     }
 
@@ -793,6 +884,7 @@
 
     async function circularRandomizeToNewSlots(){
       measure();
+      setCardSlotCssVars();
 
       const baseX = cards.map((cardEl, cardIndex) => slotX[currentSlotsForCards[cardIndex]]);
       const baseY = cards.map(() => slotY);
@@ -883,7 +975,6 @@
       const c = cards[index];
       c.style.setProperty('--revealFlipMs', `${REVEAL_FLIP_MS}ms`);
       c.classList.add('revealFlipping', 'flipping');
-
       c.classList.remove('isFlipped');
 
       await sleep(REVEAL_FLIP_MS + 60);
@@ -1000,7 +1091,8 @@
       return cards.indexOf(card);
     }
 
-    // ONE input path: pointer events only (prevents iPad double-fire)
+    // Use pointerdown for the game board (fast + prevents double-tap zoom),
+    // but DO NOT use pointerdown for enabling audio on iOS; we use CLICK there.
     board.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const idx = indexFromEventTarget(e.target);
@@ -1009,71 +1101,73 @@
 
     window.addEventListener('resize', () => { measure(); placeCardsToCurrentSlots(); });
 
-    if ('speechSynthesis' in window && window.speechSynthesis){
-      try{ window.speechSynthesis.onvoiceschanged = function(){}; }catch(_){}
-    }
-
-    // === NEW: Audio enable gate ===
-    function unlockAudioInUserGesture(){
-      if (!('speechSynthesis' in window) || !window.speechSynthesis) return false;
-
-      // Load voices list (sometimes required before first speak)
-      try{ window.speechSynthesis.getVoices(); }catch(_){}
-
-      // Speak a short phrase to unlock audio
-      try{
-        safeCancelSpeech();
-        const u = new SpeechSynthesisUtterance('語音已開啟');
-        u.lang = 'zh-HK';
-        u.rate = 0.9;
-        const v = pickCantoneseVoice();
-        if (v) u.voice = v;
-        window.speechSynthesis.speak(u);
-      }catch(_){
-        // still consider unlocked; iOS can be inconsistent but gesture happened
-      }
-      return true;
-    }
-
+    // ======= Audio gate logic =======
     function setAudioGateVisible(visible){
       audioGate.style.display = visible ? 'flex' : 'none';
     }
 
-    // Start with audio OFF until user presses button
+    // Start: locked, and toggle disabled until user decides
     audioUnlocked = false;
     speakToggle.checked = false;
     speakToggle.disabled = true;
+    setStatus('');
     setAudioGateVisible(true);
 
-    enableAudioBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      const ok = unlockAudioInUserGesture();
-      audioUnlocked = !!ok;
+    // iOS: use CLICK on a real button
+    enableAudioBtn.addEventListener('click', async () => {
+      setStatus('Enabling… 請稍等');
+
+      // 1) Start WebAudio (unlock output path)
+      const beepOk = await beepOnce();
+
+      // 2) Start speech (TTS) in same click
+      const speechOk = speechTestInGesture();
+
+      audioUnlocked = !!(beepOk || speechOk);
+
+      // Allow toggle now
       speakToggle.disabled = false;
-      speakToggle.checked = true; // turn on by default after enabling
+
+      if (!audioUnlocked){
+        // Most common causes: Silent switch / volume 0 / no speech support
+        setStatus('仍然無聲：請檢查 iPad 靜音掣／音量，然後再按一次。');
+        // Keep gate open so they can try again.
+        return;
+      }
+
+      // Turn on speaking by default
+      speakToggle.checked = true;
       setAudioGateVisible(false);
+      setStatus('');
 
-      // Optional: repeat the current instruction so user hears it right away
-      speak(instructionTop.textContent || ' ');
-    }, { passive: false });
+      // Speak the current instruction right away
+      speak(instructionTop.textContent || '開始。', { rate: 0.85 });
+    });
 
-    noAudioBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
+    noAudioBtn.addEventListener('click', () => {
       audioUnlocked = false;
-      speakToggle.disabled = false; // allow them to turn it on later (but will still be locked until enabled)
+      speakToggle.disabled = false;
       speakToggle.checked = false;
       setAudioGateVisible(false);
-    }, { passive: false });
+      setStatus('');
+    });
 
-    // If they later toggle ON without enabling, show the gate again
+    // If they try to turn ON the toggle without unlocking, show gate again.
     speakToggle.addEventListener('change', () => {
       if (speakToggle.checked && !audioUnlocked){
-        setAudioGateVisible(true);
         speakToggle.checked = false;
+        setAudioGateVisible(true);
+        setStatus('請先按「開啟聲音」。');
       }
     });
 
-    // Start game immediately (works fine without audio too)
+    // Init voices (non-blocking)
+    if ('speechSynthesis' in window && window.speechSynthesis){
+      try { window.speechSynthesis.getVoices(); } catch(e) {}
+      try { window.speechSynthesis.onvoiceschanged = function(){}; } catch(e) {}
+    }
+
+    // Start game immediately (works even if silent)
     setFrontNumbers();
     startRound();
   </script>
